@@ -8,13 +8,24 @@ except ImportError:
     raise ImportError("google-genai is required. Please install it using 'pip install google-genai'")
 
 class GeminiEmbeddings(EmbeddingProvider):
-    def __init__(self, api_key: Optional[str] = None, model: str = 'gemini-embedding-001'):
+    # Maps known Gemini embedding models to their output dimensions
+    _DIMENSIONS = {
+        "gemini-embedding-001": 3072,
+        "text-embedding-004": 768,
+    }
+
+    def __init__(self, api_key: str | None = None, model: str = "gemini-embedding-001"):
         """
         Initializes the Gemini Embedding provider. 
         If api_key is not passed, it automatically looks for the GEMINI_API_KEY environment variable.
         """
         self.client = genai.Client(api_key=api_key)
         self.model = model
+
+    @property
+    def dimension(self) -> int:
+        """Returns the embedding dimension for the configured model."""
+        return self._DIMENSIONS.get(self.model, 3072)
 
     def embed_text(self, text: str) -> List[float]:
         """Embeds a single string into a vector."""

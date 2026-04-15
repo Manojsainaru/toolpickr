@@ -1,1 +1,1 @@
-# Placeholder for HuggingFaceEmbeddings (sentence-transformers)
+# HuggingFaceEmbeddings provider

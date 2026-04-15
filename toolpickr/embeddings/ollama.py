@@ -1,1 +1,1 @@
-# Placeholder for OllamaEmbeddings
+# OllamaEmbeddings provider

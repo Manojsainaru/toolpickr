@@ -1,1 +1,1 @@
-# Placeholder for CohereEmbeddings provider
+# CohereEmbeddings provider

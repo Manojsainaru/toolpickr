@@ -4,6 +4,13 @@ from abc import ABC, abstractmethod
 from typing import List
 
 class EmbeddingProvider(ABC):
+
+    @property
+    @abstractmethod
+    def dimension(self) -> int:
+        """Return the dimensionality of the embedding vectors produced by this provider."""
+        pass
+
     @abstractmethod
     def embed_text(self, text: str) -> List[float]:
         """Generate embedding for a single text string."""
