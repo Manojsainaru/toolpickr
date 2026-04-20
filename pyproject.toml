@@ -7,4 +7,4 @@ dependencies = [
     "numpy",
 ]
 [project.optional-dependencies]
-gemini = ["google-genai"]
+google = ["google-genai"]

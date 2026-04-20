@@ -4,11 +4,7 @@ import json
 from toolpickr.core.tool import ToolDefinition
 
 def render_tool_text(tool: ToolDefinition) -> str:
-    """Converts a ToolDefinition into a formatted text string for embedding."""
-    # Convert the parameters dict to a JSON string for readability
-    params_str = json.dumps(tool.parameters) if tool.parameters else "{}"
-    
-    # This is what the embedding model will "read".
+    """Converts a ToolDefinition into a formatted text string for embedding."""    
     text = f"""
             Tool Name: {tool.name}
             Description: {tool.description}

@@ -1,1 +1,1 @@
-# Placeholder for SemanticCategorizer (clustering)
+# SemanticCategorizer (clustering)

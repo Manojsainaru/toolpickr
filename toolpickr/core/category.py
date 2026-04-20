@@ -1,1 +1,1 @@
-# Placeholder for Category model
+# Category model

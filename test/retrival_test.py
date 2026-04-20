@@ -6,7 +6,7 @@ from queries import queries
 from typing import List, Optional
 from toolpickr.core.tool import ToolDefinition
 from toolpickr.core.registry import ToolRegistry
-from toolpickr.embeddings.gemini import GeminiEmbeddings
+from toolpickr.embeddings.google import GoogleEmbeddings
 from toolpickr.embeddings.renderer import render_tool_text
 from toolpickr.vectorstores.faiss import FaissVectorStore
 from toolpickr.retrieval.flat import FlatRetriever
@@ -23,7 +23,7 @@ os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 print("Initializing ToolPickr...")
 registry = ToolRegistry() # think not needed
-embeddings = GeminiEmbeddings(api_key=os.getenv("GEMINI_API_KEY"))
+embeddings = GoogleEmbeddings(api_key=os.getenv("GEMINI_API_KEY"))
 vector_store = FaissVectorStore(dimension=1536)
 retriever = FlatRetriever(embeddings, vector_store)
 is_built = False
@@ -52,8 +52,8 @@ def build_embedding_index():
         names.append(tool.name)
         texts.append(render_tool_text(tool))
                 
-    # Get vectors from Gemini (batching is faster)
-    print(f"Embedding {len(tools)} tools via Gemini...")
+    # Get vectors from model (batching is faster)
+    print(f"Embedding {len(tools)} tools via model...")
     vectors = embeddings.embed_batch(texts)
             
     # Save them in FAISS

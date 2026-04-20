@@ -1,1 +1,1 @@
-# Placeholder for ManualCategorizer
+# ManualCategorizer

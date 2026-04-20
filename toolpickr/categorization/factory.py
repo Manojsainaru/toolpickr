@@ -1,1 +1,1 @@
-# Placeholder for get_categorizer(config) -> categorizer
+# get_categorizer(config) -> categorizer

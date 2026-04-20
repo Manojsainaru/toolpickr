@@ -1,1 +1,1 @@
-# Placeholder for HybridCategorizer
+# HybridCategorizer placeholder

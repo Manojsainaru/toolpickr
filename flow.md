@@ -887,8 +887,6 @@ Callbacks (optional hook system):
 
 ---
 
-This gives you a complete blueprint. When you're ready to start coding, I'd suggest this implementation order:
-
 1. **`core/`** — Tool, Category, Config, Registry, Results models
 2. **`embeddings/`** — Base + OpenAI provider + renderer
 3. **`vectorstores/`** — Base + InMemory store
@@ -901,4 +899,6 @@ This gives you a complete blueprint. When you're ready to start coding, I'd sugg
 10. **`integrations/`** — LangChain first
 11. Additional providers (Cohere, FAISS, Chroma, etc.)
 
-Say the word and we start building.
+# Features Built:
+1. Faiss Index caching (LRU - last 5 builds)
+2. 

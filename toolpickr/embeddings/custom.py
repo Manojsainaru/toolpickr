@@ -1,1 +1,1 @@
-# Placeholder for CallableEmbeddings (user-provided function)
+# CallableEmbeddings (user-provided function)

@@ -7,8 +7,8 @@ try:
 except ImportError:
     raise ImportError("google-genai is required. Please install it using 'pip install google-genai'")
 
-class GeminiEmbeddings(EmbeddingProvider):
-    # Maps known Gemini embedding models to their output dimensions
+class GoogleEmbeddings(EmbeddingProvider):
+    # Maps known Google embedding models to their output dimensions
     _DIMENSIONS = {
         "gemini-embedding-001": 3072,
         "text-embedding-004": 768,
@@ -16,7 +16,7 @@ class GeminiEmbeddings(EmbeddingProvider):
 
     def __init__(self, api_key: str | None = None, model: str = "gemini-embedding-001"):
         """
-        Initializes the Gemini Embedding provider. 
+        Initializes the Google Embedding provider. 
         If api_key is not passed, it automatically looks for the GEMINI_API_KEY environment variable.
         """
         self.client = genai.Client(api_key=api_key)

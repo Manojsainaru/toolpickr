@@ -1,1 +1,1 @@
-# Placeholder for ToolPickrConfig (Pydantic Settings)
+# ToolPickrConfig (Pydantic Settings)
