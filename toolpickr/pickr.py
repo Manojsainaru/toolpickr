@@ -1,8 +1,8 @@
-from typing import List, Optional, Any
+from typing import Callable, List, Optional, Any, Dict
 
 from toolpickr.core.tool import ToolDefinition, Parameters, Property
 from toolpickr.core.registry import ToolRegistry
-from toolpickr.core.results import InterceptResult
+from toolpickr.core.results import ToolCallResult
 from toolpickr.embeddings.base import EmbeddingProvider
 from toolpickr.embeddings.renderer import render_tool_text
 from toolpickr.vectorstores.faiss import FaissVectorStore
@@ -22,6 +22,7 @@ class ToolPickr:
             embedding_provider: str = "",
             embedding_model: str = "",
             embedding_api_key: str = "",
+            auto_execute: bool = False,
             debug: bool = False,
         ) -> None:
         """
@@ -29,9 +30,16 @@ class ToolPickr:
 
         Args:
             embedding_provider: Any Embedding provider: "google", "openai", etc
+            embedding_model:    The model name for the embedding provider.
+            embedding_api_key:  API key for the embedding provider.
+            auto_execute:       If True, ToolPickr will auto-execute tools that have
+                                registered handlers when the LLM calls action="execute".
+                                If False, ToolPickr acts as a router and returns the
+                                call info for the user to handle execution themselves.
             debug:              Optional. If True, prints execution steps and logs to console.
         """
         self.debug = debug
+        self.auto_execute = auto_execute
         self.registry = ToolRegistry(debug=self.debug)
         self.embeddings = self.get_embedding_provider(embedding_provider, embedding_model, embedding_api_key)
         self.vector_store = FaissVectorStore(dimension=self.embeddings.dimension, debug=self.debug)
@@ -44,7 +52,7 @@ class ToolPickr:
             print(f"[ToolPickr - Debug] {msg}")
 
     # ──────────────────────────────────────────────
-    # Tool Registration
+    # Embedding Provider
     # ──────────────────────────────────────────────
 
     def get_embedding_provider(self, embedding_provider: str, embedding_model: str, embedding_api_key: str = None) -> EmbeddingProvider:
@@ -56,16 +64,35 @@ class ToolPickr:
         else: 
             raise ValueError(f"Unsupported embedding provider: {embedding_provider}")
 
-    def register_tool(self, tool: ToolDefinition) -> None:
-        """Registers a single tool."""
+    # ──────────────────────────────────────────────
+    # Tool Registration
+    # ──────────────────────────────────────────────
+
+    def register_tool(self, tool: ToolDefinition, handler: Optional[Callable] = None) -> None:
+        """Registers a single tool with an optional callable handler.
+        
+        Args:
+            tool:    The tool definition (schema).
+            handler: Optional callable that implements the tool. Required for
+                     auto-execution when auto_execute=True.
+        """
         self._log(f"Registering tool: {tool.name}")
-        self.registry.register_tool(tool)
+        self.registry.register_tool(tool, handler=handler)
 
     def register_tools(self, tools: List[ToolDefinition]) -> None:
-        """Bulk-registers a list of tools."""
+        """Bulk-registers a list of tools (without handlers)."""
         self._log(f"Bulk-registering {len(tools)} tools.")
         for tool in tools:
             self.registry.register_tool(tool)
+
+    def register_handler(self, tool_name: str, handler: Callable) -> None:
+        """Registers a callable handler for an already-registered tool.
+        
+        Args:
+            tool_name: Name of the tool (must already be registered).
+            handler:   Callable that implements the tool.
+        """
+        self.registry.register_handler(tool_name, handler)
 
     # ──────────────────────────────────────────────
     # Build
@@ -146,89 +173,297 @@ class ToolPickr:
         return results
 
     # ──────────────────────────────────────────────
-    # System Prompt Injection
+    # System Prompt
     # ──────────────────────────────────────────────
 
-    def get_system_instructions(self) -> str:
-        """Returns ToolPickr's system instructions as a standalone string."""
-        return (
-            "You are an AI assistant capable of performing complex tasks using tools. "
-            "You currently have access to 'tool_search'. "
-            "When given a task, you MUST FIRST call 'tool_search' with a list of natural "
-            "language queries that describe the sub-tasks you need to perform. "
-            "The system will then provide the matching tools, which you should use to "
-            "complete the task."
-        )
-
-    def inject_system_prompt(self, existing_prompt: str = "") -> str:
+    def get_system_prompt(self, existing_prompt: str = "") -> str:
         """
-        Appends ToolPickr's instructions to the developer's existing system prompt.
-        Pass an empty string (default) if there is no existing prompt.
+        Returns the complete system prompt with ToolPickr instructions merged in.
+        Pass the user's existing system prompt to merge, or empty string for standalone.
+
+        The returned prompt instructs the LLM on the two-step toolpickr protocol:
+          Step 1: Call toolpickr(action="search", queries=[...]) to find available tools.
+          Step 2: Call toolpickr(action="execute", tool_name=..., tool_arguments={...})
+                  to execute each tool.
 
         Example:
-            config = GenerateContentConfig(
-                system_instruction=pickr.inject_system_prompt("You are a helpful assistant."),
-                tools=[pickr.get_search_tool(format="google")]
-            )
+            system_prompt = pickr.get_system_prompt("You are a helpful assistant.")
         """
-        toolpickr_instructions = self.get_system_instructions()
+        toolpickr_instructions = (
+            "You have access to a special meta-tool called 'toolpickr'. "
+            "Use it to discover and invoke the right tools for any task.\n\n"
+            "Follow this protocol:\n"
+            "1. SEARCH: First, call toolpickr with action=\"search\" and a list of "
+            "natural language queries describing what you need to do. Each query should "
+            "describe one sub-task (e.g., [\"send an email\", \"get the weather\"]). "
+            "ToolPickr will return the available tools that match your needs.\n"
+            "2. EXECUTE: Then, for each tool you want to use, call toolpickr with "
+            "action=\"execute\", the tool_name (from the search results), and "
+            "tool_arguments (a JSON object matching the tool's parameter schema). "
+            "ToolPickr will execute the tool and return the result.\n\n"
+            "Important rules:\n"
+            "- Always SEARCH first before executing. Do not guess tool names.\n"
+            "- You can make multiple execute calls if you need multiple tools.\n"
+            "- The tool_arguments must match the parameter schema returned in the search results.\n"
+            "- After receiving tool results, synthesize the information to respond to the user."
+        )
         if existing_prompt:
             return f"{existing_prompt}\n\n{toolpickr_instructions}"
         return toolpickr_instructions
 
     # ──────────────────────────────────────────────
-    # tool_search Schema
+    # toolpickr Tool Schema
     # ──────────────────────────────────────────────
 
-    def get_search_tool(self, format: str = "base") -> Any:
+    def get_tool(self, format: str = "base") -> Any:
         """
-        Returns the schema for the `tool_search` function, formatted for the
-        requested LLM provider.
+        Returns the schema for the `toolpickr` meta-tool, formatted for the
+        requested LLM provider. This is the single tool the user adds to their
+        LLM API call.
+
+        The toolpickr tool supports two actions:
+          - action="search": Discover tools by providing natural language queries.
+          - action="execute": Execute a discovered tool by name with arguments.
 
         Args:
-            format: "base" (plain dict) or "google"
+            format: "base" (plain dict) or "gemini"
 
         Returns:
-            A dict formatted for the target LLM provider.
+            A tool schema ready to pass in the LLM's tools= parameter.
+
+        Example:
+            toolpickr_tool = pickr.get_tool(format="gemini")
+            config = GenerateContentConfig(
+                system_instruction=pickr.get_system_prompt("You are helpful."),
+                tools=[toolpickr_tool, *other_tools],
+            )
         """
-        search_tool_def = ToolDefinition(
-            name="tool_search",
+        toolpickr_def = ToolDefinition(
+            name="toolpickr",
             description=(
-                "Search for tools required to complete the user's task. "
-                "Pass a list of natural language queries describing each action needed."
+                "A meta-tool for discovering and executing tools. "
+                "Use action='search' with a list of queries to find available tools, "
+                "then use action='execute' with a tool_name and tool_arguments to run a tool."
             ),
             parameters=Parameters(
                 type="object",
                 properties={
+                    "action": Property(
+                        type="string",
+                        description="The action to perform: 'search' to find tools, "
+                                    "'execute' to run a discovered tool."
+                    ),
                     "queries": Property(
                         type="array",
-                        description="Natural language descriptions of actions needed, "
+                        description="(For action='search') Natural language descriptions of "
+                                    "the sub-tasks you need tools for. "
                                     "e.g. ['send an email', 'calculate total price']",
                         items={"type": "string"}
-                    )
+                    ),
+                    "tool_name": Property(
+                        type="string",
+                        description="(For action='execute') The name of the tool to execute, "
+                                    "as returned by the search results."
+                    ),
+                    "tool_arguments": Property(
+                        type="object",
+                        description="(For action='execute') The arguments to pass to the tool, "
+                                    "matching the tool's parameter schema from the search results."
+                    ),
                 },
-                required=["queries"]
+                required=["action"]
             )
         )
 
         if format == "gemini":
             from toolpickr.integrations.gemini import to_gemini_format
-            return to_gemini_format([search_tool_def])[0]
+            return to_gemini_format([toolpickr_def])[0]
 
         # Base format — plain dict matching standard JSON Schema
         params = (
-            search_tool_def.parameters.model_dump(exclude_none=True)
-            if hasattr(search_tool_def.parameters, "model_dump")
-            else search_tool_def.parameters.dict(exclude_none=True)
+            toolpickr_def.parameters.model_dump(exclude_none=True)
+            if hasattr(toolpickr_def.parameters, "model_dump")
+            else toolpickr_def.parameters.dict(exclude_none=True)
         )
         return {
-            "name": search_tool_def.name,
-            "description": search_tool_def.description,
+            "name": toolpickr_def.name,
+            "description": toolpickr_def.description,
             "parameters": params,
         }
 
     # ──────────────────────────────────────────────
-    # tool_search Execution
+    # Handle Tool Call — The Core Entry Point
+    # ──────────────────────────────────────────────
+
+    def handle_tool_call(
+        self,
+        args: Dict[str, Any],
+        top_k_per_query: int = 3,
+        format: str = "base",
+    ) -> ToolCallResult:
+        """
+        Processes a toolpickr function call from the LLM.
+
+        This is the single entry point for handling all toolpickr interactions.
+        The LLM calls the 'toolpickr' tool with an action, and this method
+        routes to the appropriate handler.
+
+        Args:
+            args:             The arguments dict from the LLM's function call.
+                              Must contain "action" ("search" or "execute").
+            top_k_per_query:  (For search) How many tools to retrieve per query.
+            format:           "base" (plain dicts) or "gemini" — controls tool schema format
+                              in search results.
+
+        Returns:
+            ToolCallResult with the response data.
+
+        Example:
+            # In your tool-handling loop:
+            if function_call.name == "toolpickr":
+                result = pickr.handle_tool_call(dict(function_call.args))
+                # Feed result.data back to the LLM as the tool response
+        """
+        action = args.get("action", "")
+        self._log(f"Handling toolpickr call: action='{action}'")
+
+        if action == "search":
+            return self._handle_search(args, top_k_per_query, format)
+        elif action == "execute":
+            return self._handle_execute(args)
+        else:
+            return ToolCallResult(
+                action=action,
+                success=False,
+                error=f"Unknown action: '{action}'. Use 'search' or 'execute'.",
+            )
+
+    # ──────────────────────────────────────────────
+    # Search Retrieval (internal)
+    # ──────────────────────────────────────────────
+
+    def _handle_search(
+        self,
+        args: Dict[str, Any],
+        top_k_per_query: int = 3,
+        format: str = "base",
+    ) -> ToolCallResult:
+        """Handles the 'search' action: retrieves matching tools for the given queries."""
+        queries = args.get("queries", [])
+        if not queries:
+            return ToolCallResult(
+                action="search",
+                success=False,
+                error="No queries provided. Pass a 'queries' array with search descriptions.",
+            )
+
+        if not self._is_built:
+            raise RuntimeError("Call .build() before handling tool calls.")
+
+        self._log(f"Searching for tools with {len(queries)} queries")
+
+        seen = set()
+        tool_definitions: List[ToolDefinition] = []
+
+        for query in queries:
+            self._log(f"  Retrieving for query: '{query}'")
+            results = self.retriever.retrieve(query, top_k=top_k_per_query)
+            for res in results:
+                if res.tool_name not in seen:
+                    self._log(f"    Found unique tool: {res.tool_name}")
+                    seen.add(res.tool_name)
+                    tool_def = self.registry.get_tool(res.tool_name)
+                    if tool_def:
+                        tool_definitions.append(tool_def)
+
+        self._log(f"Search returning {len(tool_definitions)} total unique tools.")
+
+        # Build the tool info list for the LLM response
+        available_tools = []
+        for tool in tool_definitions:
+            tool_info = {
+                "name": tool.name,
+                "description": tool.description,
+            }
+            if tool.parameters:
+                params = (
+                    tool.parameters.model_dump(exclude_none=True)
+                    if hasattr(tool.parameters, "model_dump")
+                    else tool.parameters.dict(exclude_none=True)
+                )
+                tool_info["parameters"] = params
+            available_tools.append(tool_info)
+
+        return ToolCallResult(
+            action="search",
+            success=True,
+            data={"available_tools": available_tools},
+        )
+
+    def _handle_execute(self, args: Dict[str, Any]) -> ToolCallResult:
+        """Handles the 'execute' action: validates and optionally executes the tool."""
+        tool_name = args.get("tool_name", "")
+        tool_arguments = args.get("tool_arguments", {})
+
+        if not tool_name:
+            return ToolCallResult(
+                action="execute",
+                success=False,
+                error="No tool_name provided. Specify which tool to execute.",
+            )
+
+        # Validate the tool exists
+        tool_def = self.registry.get_tool(tool_name)
+        if not tool_def:
+            return ToolCallResult(
+                action="execute",
+                success=False,
+                tool_name=tool_name,
+                error=f"Tool '{tool_name}' not found in registry.",
+            )
+
+        self._log(f"Execute request for tool '{tool_name}' with args: {tool_arguments}")
+
+        # Auto-execute if enabled and handler exists
+        if self.auto_execute:
+            handler = self.registry.get_handler(tool_name)
+            if handler:
+                self._log(f"Auto-executing tool '{tool_name}'...")
+                try:
+                    result = handler(**tool_arguments) if tool_arguments else handler()
+                    return ToolCallResult(
+                        action="execute",
+                        success=True,
+                        data={"result": result},
+                        tool_name=tool_name,
+                        executed=True,
+                    )
+                except Exception as e:
+                    return ToolCallResult(
+                        action="execute",
+                        success=False,
+                        data={},
+                        tool_name=tool_name,
+                        executed=True,
+                        error=f"Tool execution failed: {str(e)}",
+                    )
+            else:
+                self._log(f"No handler registered for '{tool_name}', falling back to routing.")
+
+        # Router mode: return the call info for the user to handle
+        return ToolCallResult(
+            action="execute",
+            success=True,
+            data={
+                "tool_name": tool_name,
+                "tool_arguments": tool_arguments,
+            },
+            tool_name=tool_name,
+            executed=False,
+        )
+
+    # ──────────────────────────────────────────────
+    # Legacy / Convenience Aliases
     # ──────────────────────────────────────────────
 
     def execute_search_tool(
@@ -240,6 +475,8 @@ class ToolPickr:
         """
         Runs retrieval for a list of natural language queries and returns
         the matching tool schemas formatted for the target LLM provider.
+
+        This is a convenience method that wraps _handle_search for direct use.
 
         Args:
             queries:          List of natural language task descriptions.
@@ -287,168 +524,3 @@ class ToolPickr:
                 "parameters": params,
             })
         return schemas
-
-    # ──────────────────────────────────────────────
-    # Response Interceptor  ← The magic method
-    # ──────────────────────────────────────────────
-
-    def handle_response(self, llm_response: Any, format: str = "base") -> InterceptResult:
-        """
-        Inspects an LLM response. If it contains a `tool_search` function call,
-        ToolPickr automatically runs retrieval and builds the conversation turns
-        required for the second LLM call.
-
-        The developer only needs to check `result.is_tool_search` and, if True,
-        use `result.updated_history` and `result.retrieved_tools` in the next call.
-
-        Args:
-            llm_response:  The raw response object from the LLM SDK.
-            format:        "base" or "google" — controls schema output format.
-
-        Returns:
-            InterceptResult
-
-        Example (Google):
-            response = client.models.generate_content(...)
-            intercept = pickr.handle_response(response, format="google")
-
-            if intercept.is_tool_search:
-                response2 = client.models.generate_content(
-                    contents=my_history + intercept.updated_history,
-                    config=GenerateContentConfig(tools=intercept.retrieved_tools)
-                )
-        """
-        self._log("Inspecting LLM response for tool_search call...")
-        function_call = self._extract_function_call(llm_response)
-
-        # Not a tool_search call — pass through untouched
-        if function_call is None or getattr(function_call, "name", None) != "tool_search":
-            self._log("No tool_search function call found. Returning standard InterceptResult.")
-            return InterceptResult(is_tool_search=False)
-
-        self._log(f"tool_search call intercepted! Arguments: {getattr(function_call, 'args', {})}")
-
-        # Extract the queries the LLM wants to search for
-        queries = list(function_call.args.get("queries", []))
-
-        # Run retrieval
-        retrieved_tools = self.execute_search_tool(
-            queries=queries,
-            top_k_per_query=3,
-            format=format,
-        )
-
-        # Original model content preserves thought_signature required by thinking models
-        original_model_content = llm_response.candidates[0].content
-
-        # Build the conversation turns for the developer's history
-        updated_history = self._build_history_turns(function_call, retrieved_tools, format, original_model_content)
-
-        return InterceptResult(
-            is_tool_search=True,
-            retrieved_tools=retrieved_tools,
-            updated_history=updated_history,
-            original_function_call=function_call,
-        )
-
-    # ──────────────────────────────────────────────
-    # Wrapped Client
-    # ──────────────────────────────────────────────
-
-    def wrap(self, client: Any, format: str = "gemini") -> Any:
-        """
-        Wraps an LLM client so that tool_search interception happens
-        transparently. The returned object acts as a native proxy, allowing
-        developers to use the native methods exactly as before, while
-        auto-handling the two-turn orchestration behind the scenes.
-
-        The developer can still pass additional tools and configs through 
-        the native parameters (e.g. `config` in Gemini) — full flexibility is preserved.
-
-        Args:
-            client: The native LLM client (e.g. genai.Client instance).
-            format: The LLM provider format ("gemini", etc.)
-
-        Returns:
-            A transparent proxy around the native client.
-
-        Example (Gemini):
-            from google.genai import types
-            
-            smart_client = pickr.wrap(gemini_client, format="gemini")
-            response = smart_client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=history,
-                config=types.GenerateContentConfig(
-                    system_instruction="You are a helpful assistant."
-                )
-            )
-            # response behaves natively but with metadata:
-            # response.toolpickr_intercepted → bool
-            # response.toolpickr_retrieved_tool_names → list[str]
-        """
-        self._log(f"Wrapping client with format='{format}'")
-        if not self._is_built:
-            raise RuntimeError("Call .build() before wrapping a client.")
-
-        if format == "gemini":
-            from toolpickr.integrations.gemini import WrappedGeminiClient
-            return WrappedGeminiClient(client=client, pickr=self, format=format)
-
-        raise ValueError(f"Unsupported format for wrap(): '{format}'. Supported: 'gemini'")
-
-    # ──────────────────────────────────────────────
-    # Private Helpers
-    # ──────────────────────────────────────────────
-
-    def _extract_function_call(self, llm_response: Any) -> Optional[Any]:
-        """
-        Attempts to extract a function_call from the LLM response.
-        Iterates all parts to handle thinking models where parts[0] may be
-        a thought and the function_call appears in a later part.
-        """
-        try:
-            for part in llm_response.candidates[0].content.parts:
-                fc = getattr(part, "function_call", None)
-                if fc is not None:
-                    return fc
-            return None
-        except (AttributeError, IndexError, TypeError):
-            return None
-
-    def _build_history_turns(
-        self,
-        function_call: Any,
-        retrieved_tools: List[Any],
-        format: str,
-        original_model_content: Any = None,
-    ) -> List[Any]:
-        """
-        Builds the two conversation turns (model + tool) that the developer
-        needs to append to their history before the second LLM call.
-        """
-        if format == "gemini":
-            from toolpickr.integrations.gemini import build_tool_result_message
-
-            # Collect readable tool names for the tool response message
-            retrieved_names = [
-                decl["name"]
-                for group in retrieved_tools
-                for decl in group.get("function_declarations", [])
-            ]
-            # Pass original_model_content so thought_signature is preserved
-            model_turn, tool_turn = build_tool_result_message(original_model_content, retrieved_names)
-            return [model_turn, tool_turn]
-
-        # Base format — return plain dicts the developer can inspect or adapt
-        retrieved_names = [t.get("name", "") for t in retrieved_tools]
-        return [
-            {"role": "model", "function_call": {"name": "tool_search", "args": dict(function_call.args)}},
-            {
-                "role": "tool",
-                "function_response": {
-                    "name": "tool_search",
-                    "response": {"result": f"Available tools: {retrieved_names}"}
-                }
-            }
-        ]

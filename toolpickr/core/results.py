@@ -1,30 +1,30 @@
 from dataclasses import dataclass, field
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 @dataclass
-class InterceptResult:
+class ToolCallResult:
     """
-    The result returned by ToolPickr.handle_response().
+    The result returned by ToolPickr.handle_tool_call().
 
-    If `is_tool_search` is True, the developer should:
-      1. Append `updated_history` to their conversation.
-      2. Make a second LLM call with `tools=retrieved_tools`.
+    For action="search":
+        - action will be "search"
+        - data will contain {"available_tools": [...]} with tool schemas
+        - tool_name will be None
 
-    If `is_tool_search` is False, ToolPickr did not intercept anything.
-    The developer handles the response as normal.
+    For action="execute" (when auto_execute=True and handler exists):
+        - action will be "execute"
+        - data will contain the tool's return value
+        - tool_name will be the name of the tool that was called
+
+    For action="execute" (when auto_execute=False or no handler):
+        - action will be "execute"
+        - data will contain {"tool_name": ..., "tool_arguments": ...}
+          for the user to handle execution themselves
+        - tool_name will be the name of the tool
     """
-
-    # Was this response a tool_search call that ToolPickr handled?
-    is_tool_search: bool
-
-    # The full retrieved tool schemas, ready to pass as tools= in the next LLM call.
-    # Will be an empty list if is_tool_search is False.
-    retrieved_tools: List[Any] = field(default_factory=list)
-
-    # Pre-built conversation turns to append to the developer's history:
-    #   [model_turn (the tool_search call), tool_turn (ToolPickr's response)]
-    # Developer just does: history += intercept.updated_history
-    updated_history: List[Any] = field(default_factory=list)
-
-    # The raw function_call object from the LLM, exposed for advanced use cases.
-    original_function_call: Any = None
+    action: str   # Which action was performed: "search" or "execute"
+    success: bool # Whether the operation succeeded
+    data: Dict[str, Any] = field(default_factory=dict)  # Response payload — contents depend on the action and auto_execute mode
+    tool_name: Optional[str] = None  # The tool name (populated for "execute" actions)
+    error: Optional[str] = None  # Error message if success is False
+    executed: bool = False  # Whether the tool was actually auto-executed (True) or just routed (False)
