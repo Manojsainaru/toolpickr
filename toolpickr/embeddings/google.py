@@ -17,8 +17,18 @@ class GoogleEmbeddings(EmbeddingProvider):
     def __init__(self, api_key: str | None = None, model: str = "gemini-embedding-001"):
         """
         Initializes the Google Embedding provider. 
-        If api_key is not passed, it automatically looks for the GEMINI_API_KEY environment variable.
+        If api_key is not passed, it automatically looks for GEMINI_API_KEY
+        or GOOGLE_API_KEY environment variables (in that order).
         """
+        import os
+        if not api_key:
+            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Google Embeddings requires an API key. "
+                "Set GEMINI_API_KEY or GOOGLE_API_KEY environment variable, "
+                "or pass api_key explicitly."
+            )
         self.client = genai.Client(api_key=api_key)
         self.model = model
 

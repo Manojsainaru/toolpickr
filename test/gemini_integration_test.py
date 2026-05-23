@@ -38,9 +38,7 @@ print("  ToolPickr — Gemini Integration Test (universal tool)")
 print("=" * 60)
 
 pickr = ToolPickr(
-    embedding_provider="google",
-    embedding_model="gemini-embedding-001",
-    embedding_api_key=GEMINI_API_KEY,
+    embedding_model="google/gemini-embedding-001",  # Auto-discovers GEMINI_API_KEY from env
     auto_execute=False,  # Router mode — we handle execution ourselves
 )
 

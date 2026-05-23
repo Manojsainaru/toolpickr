@@ -5,6 +5,9 @@ requires-python = ">=3.9"
 dependencies = [
     "faiss-cpu",
     "numpy",
+    "pydantic>=2.0",
+    "rank-bm25",
+    "sentence-transformers",
 ]
 [project.optional-dependencies]
 google = ["google-genai"]
