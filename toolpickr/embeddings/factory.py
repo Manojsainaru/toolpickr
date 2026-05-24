@@ -91,11 +91,14 @@ def create_embedding_provider(
         return GoogleEmbeddings(api_key=resolved_key, model=model_name)
 
     elif provider == "openai":
-        # TODO: Implement OpenAI embeddings provider
-        raise NotImplementedError(
-            f"OpenAI embedding provider is not yet implemented. "
-            f"Contributions welcome!"
-        )
+        from toolpickr.embeddings.openai import OpenAIEmbeddings
+        if not resolved_key:
+            raise ValueError(
+                f"API key required for OpenAI embeddings. "
+                f"Set OPENAI_API_KEY environment variable, "
+                f"or pass api_key explicitly."
+            )
+        return OpenAIEmbeddings(api_key=resolved_key, model=model_name)
 
     elif provider == "cohere":
         # TODO: Implement Cohere embeddings provider

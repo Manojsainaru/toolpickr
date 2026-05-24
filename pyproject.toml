@@ -1,7 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "toolpickr"
-version = "1.0.0"
+dynamic = ["version"]
+description = "Professional-grade ensemble-based RAG retrieval system (semantic + BM25) with cross-encoder reranking"
+readme = "README.md"
 requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "smoke-2k3"}
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "faiss-cpu",
     "numpy",
@@ -9,5 +24,15 @@ dependencies = [
     "rank-bm25",
     "sentence-transformers",
 ]
+
 [project.optional-dependencies]
 google = ["google-genai"]
+openai = ["openai"]
+all = ["google-genai", "openai"]
+
+[project.urls]
+Homepage = "https://github.com/smoke-2k3/toolpickr"
+Issues = "https://github.com/smoke-2k3/toolpickr/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "toolpickr._version.__version__"}

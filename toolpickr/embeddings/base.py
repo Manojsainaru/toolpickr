@@ -1,10 +1,11 @@
-# EmbeddingProvider ABC
-
 from abc import ABC, abstractmethod
 from typing import List
 
 class EmbeddingProvider(ABC):
-
+    """
+    Abstract base class for embedding providers.
+    All embedding providers must implement the methods defined in this class.
+    """
     @property
     @abstractmethod
     def dimension(self) -> int:

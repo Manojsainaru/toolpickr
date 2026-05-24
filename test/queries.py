@@ -8,7 +8,7 @@ queries = [
     "Search for images of Mars and show me the best ones",
 
     # 🌦 WEATHER + ACTION
-    "If it’s going to rain tomorrow in Mumbai, set a reminder to carry an umbrella at 8am",
+    "If it's going to rain tomorrow in Mumbai, set a reminder to carry an umbrella at 8am",
     "Get weather forecast for Delhi for next 5 days and email me a summary",
 
     # 💰 FINANCE + ANALYSIS

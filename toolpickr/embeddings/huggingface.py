@@ -1,1 +1,0 @@
-# HuggingFaceEmbeddings provider

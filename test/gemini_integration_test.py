@@ -74,7 +74,7 @@ def run_agent(user_query: str, existing_system_prompt: str = ""):
         tools=[toolpickr_tool],  # + any other tools the user wants
     )
 
-    # Standard Gemini client — no wrapping
+    # Standard Gemini client
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     # ── Agent loop: handle toolpickr calls ──
@@ -161,9 +161,9 @@ if __name__ == "__main__":
     MY_SYSTEM_PROMPT = "You are a helpful personal assistant."
 
     test_queries = [
-        "Send an email to john@gmail.com about the project meeting tomorrow.",
+        # "Send an email to john@gmail.com about the project meeting tomorrow.",
         # "What is the current weather in Tokyo?",
-        # "Book a flight from New York to London on 2025-05-10.",
+        "Book a flight from New York to London on 2025-05-10.",
         # "What's the stock price for Tesla?",
     ]
 
