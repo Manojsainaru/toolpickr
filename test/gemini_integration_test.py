@@ -18,13 +18,16 @@ import os
 import sys
 from dotenv import load_dotenv
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+#sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from google import genai
 from google.genai import types
 
-from toolpickr.pickr import ToolPickr
-from tools_definitions import tools
+from toolpickr import ToolPickr
+try:
+    from tools_definitions import tools
+except ModuleNotFoundError:
+    from test.tools_definitions import tools
 
 load_dotenv()
 
@@ -53,12 +56,11 @@ toolpickr_tool = pickr.get_tool(format="gemini")
 print("[3/4] Got toolpickr tool schema.")
 print("[4/4] Ready.\n")
 
-
 # ── Step 3: The agent loop — user has full control ──────────────────────────
 def run_agent(user_query: str, existing_system_prompt: str = ""):
-    print(f"{'─' * 60}")
+    print(f"{'-' * 60}")
     print(f"User: {user_query}")
-    print(f"{'─' * 60}")
+    print(f"{'-' * 60}")
 
     # Merge system prompts
     system_prompt = pickr.get_system_prompt(existing_system_prompt)

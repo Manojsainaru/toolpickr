@@ -1,12 +1,15 @@
 <p align="center">
   <h1 align="center">🔧 ToolPickr</h1>
-  <p align="center"><strong>Smart and scalable tool picking for LLMs</strong></p>
+  <p align="center"><strong>ToolPickr will make sure your LLM never misses a tool unlike the 'e' missing in its name.</strong></p>
   <p align="center">
-    Give your LLM access to hundreds of tools — ToolPickr finds the right ones instantly.
+    Give your LLM access to hundreds of tools: ToolPickr finds the right ones instantly.
   </p>
 </p>
 
+> **Early Work-In-Progress**: ToolPickr is under active development. While the core retrieval mechanics are functional, the project is brand new, and we do not yet claim or guarantee any specific tool-picking accuracy. Formal benchmarking is planned and currently underway.
+
 <p align="center">
+  <a href="#the-impact">The Impact</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#how-it-works">How It Works</a> •
   <a href="#installation">Installation</a> •
@@ -18,7 +21,7 @@
 
 ## The Problem
 
-LLMs have a limited context window. When you have 100+ tools, you can't pass all of them in every API call — it's expensive, slow, and degrades tool selection accuracy.
+LLMs have a limited context window. When you have hundreds of tools, you can't pass all of them in every API call. It's expensive, slow, and degrades tool selection accuracy.
 
 ## The Solution
 
@@ -26,12 +29,25 @@ LLMs have a limited context window. When you have 100+ tools, you can't pass all
 
 ToolPickr exposes itself as a **single meta-tool** called `toolpickr` that your LLM calls in a two-step protocol:
 
-1. **Search** — LLM describes what it needs → ToolPickr returns matching tools
-2. **Execute** — LLM calls a discovered tool → ToolPickr routes (or auto-executes) it
+1. **Search**: LLM describes what it needs → ToolPickr returns matching tools
+2. **Execute**: LLM calls a discovered tool → ToolPickr routes (or auto-executes) it
 
 You keep **full control** of your LLM loop. No wrappers, no proxies, no magic.
 
----
+## Why Use This? (The Impact)
+
+### Token Savings
+When you have 100+ tools, passing all of them in every prompt consumes a lot of context:
+* **Without ToolPickr:** 100 tools × ~250 tokens each = **~25,000 tokens** per request.
+* **With ToolPickr:** 1 search meta-tool (~300 tokens) + top 5 retrieved tools (~1,250 tokens) = **~1,550 tokens** total.
+This saves about **90%+ of the tool-related prompt overhead** on each turn.
+
+### Lower API Bills
+Trimming down prompt sizes means fewer tokens are billed. If you run thousands of queries a day, this token saving scales up and keeps your monthly API bill manageable.
+
+### Better Tool Call Accuracy
+LLMs often struggle to pick the correct tool or hallucinate arguments when overwhelmed with options (the "lost in the middle" effect). By only exposing the most relevant top-k tools for each query, ToolPickr makes tool selection much more reliable.
+
 
 ## Quick Start
 
@@ -135,7 +151,7 @@ Your LLM ←→ toolpickr (meta-tool)
 
 When your LLM receives a user request, it calls the `toolpickr` tool:
 
-**Step 1 — Search:**
+**Step 1: Search:**
 ```json
 {
   "action": "search",
@@ -144,7 +160,7 @@ When your LLM receives a user request, it calls the `toolpickr` tool:
 ```
 ToolPickr returns matching tool schemas with their parameter definitions.
 
-**Step 2 — Execute:**
+**Step 2: Execute:**
 ```json
 {
   "action": "execute",
@@ -162,24 +178,24 @@ ToolPickr either auto-executes (if a handler is registered) or returns the call 
 
 ```python
 pickr = ToolPickr(
-    # ── Embedding Model ──
+    # Embedding Model Settings
     embedding_model="sentence_transformers/all-MiniLM-L6-v2",  # "provider/model" format
-    embedding_api_key=None,       # Optional — auto-discovered from env vars
+    embedding_api_key=None,       # Optional (auto-discovered from env vars)
 
-    # ── Reranker (optional) ──
+    # Reranker Settings (optional)
     reranker_model=None,          # e.g., "cross_encoder/ms-marco-MiniLM-L-6-v2"
-    reranker_api_key=None,        # Optional — auto-discovered from env vars
+    reranker_api_key=None,        # Optional (auto-discovered from env vars)
 
-    # ── Retrieval Tuning ──
+    # Retrieval Tuning
     top_k=5,                      # Final number of tools returned per query
     top_p=15,                     # Candidates before reranking (only with reranker)
     semantic_weight=0.5,          # Weight for embedding similarity [0.0 - 1.0]
     bm25_weight=0.5,              # Weight for BM25 lexical score [0.0 - 1.0]
 
-    # ── Execution ──
+    # Execution Settings
     auto_execute=False,           # True = execute tools with handlers automatically
 
-    # ── Debug ──
+    # Debugging
     debug=False,                  # True = print detailed pipeline logs
 )
 ```
@@ -230,7 +246,7 @@ pickr.build()
 toolpickr_tool = pickr.get_tool(format="gemini")
 system_prompt = pickr.get_system_prompt("You are a helpful assistant.")
 
-# Standard Gemini API — you own the loop
+# Standard Gemini API: you keep full control of the loop
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 config = types.GenerateContentConfig(
     system_instruction=system_prompt,
@@ -285,12 +301,12 @@ for turn in range(5):
 ```python
 from toolpickr import ToolPickr
 
-# Uses sentence-transformers locally — no API key needed
+# Uses sentence-transformers locally (no API key needed)
 pickr = ToolPickr()
 pickr.register_tools(my_tools)
 pickr.build()
 
-# Direct search (no LLM needed)
+# Direct search (no LLM required)
 results = pickr.retrieve("send an email")
 for r in results:
     print(f"  {r.tool_name}: {r.score:.4f}")
@@ -359,8 +375,8 @@ pickr = ToolPickr(semantic_weight=0.3, bm25_weight=0.7)
 | `build()` | Build the FAISS + BM25 search indexes |
 | `get_tool(format="base")` | Get the `toolpickr` meta-tool schema (`"base"` or `"gemini"`) |
 | `get_system_prompt(existing="")` | Get the system prompt with ToolPickr instructions |
-| `handle_tool_call(args)` | Process a toolpickr function call from the LLM → `ToolCallResult` |
-| `retrieve(query, top_k=None)` | Direct retrieval — returns `SearchResult` objects |
+| `handle_tool_call(args)` | Process a toolpickr function call from the LLM, returning a `ToolCallResult` |
+| `retrieve(query, top_k=None)` | Direct retrieval (returns a list of `SearchResult` objects) |
 
 ### `ToolDefinition`
 
@@ -452,6 +468,12 @@ You can always override with explicit `embedding_api_key` or `reranker_api_key` 
 
 ---
 
+## Benchmarks & Testing
+
+Formal benchmark tests and accuracy evaluations are currently **pending**. 
+
+---
+
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 (see [LICENSE](LICENSE) for details).
