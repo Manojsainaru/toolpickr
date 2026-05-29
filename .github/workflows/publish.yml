@@ -1,4 +1,4 @@
-name: Publish to TestPyPI
+name: Publish to PyPI / TestPyPI
 
 on:
   push:
@@ -6,6 +6,14 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Target PyPI Repository'
+        required: true
+        type: choice
+        options:
+          - pypi
+          - testpypi
+        default: 'testpypi'
       version_override:
         description: 'Optional: Version override (e.g. 1.0.1). Leave empty to use version from toolpickr/_version.py'
         required: false
@@ -13,7 +21,7 @@ on:
 
 jobs:
   build-n-publish:
-    name: Build and publish Python distribution to TestPyPI
+    name: Build and publish Python distribution
     runs-on: ubuntu-latest
 
     permissions:
@@ -45,9 +53,27 @@ jobs:
       - name: Build binary wheel and source tarball
         run: python -m build
 
-      - name: Publish package distribution to TestPyPI
+      - name: Determine Target PyPI Repository
+        id: determine-target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "repository=pypi" >> $GITHUB_OUTPUT
+            echo "url=https://upload.pypi.org/legacy/" >> $GITHUB_OUTPUT
+          else
+            if [ "${{ github.event.inputs.target }}" = "pypi" ]; then
+              echo "repository=pypi" >> $GITHUB_OUTPUT
+              echo "url=https://upload.pypi.org/legacy/" >> $GITHUB_OUTPUT
+            else
+              echo "repository=testpypi" >> $GITHUB_OUTPUT
+              echo "url=https://test.pypi.org/legacy/" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Publish package distribution
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: https://test.pypi.org/legacy/
-          # No username or password/token is specified here! OIDC Trusted Publishing
-          # will authenticate automatically based on your repository identity.
+          repository-url: ${{ steps.determine-target.outputs.url }}
+          # OIDC Trusted Publishing works for both PyPI and TestPyPI
+          # by matching the publisher registered on each platform.
+
